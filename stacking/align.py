@@ -7,6 +7,7 @@ from tqdm import tqdm
 from skimage.feature import ORB, match_descriptors
 from skimage.transform import AffineTransform, warp
 from skimage.color import rgb2gray
+from skimage.measure import ransac
 
 
 class AlignStrategy(Protocol):
@@ -56,6 +57,9 @@ class PhaseCorrelationAlignStrategy:
 class FeatureMatchAlignStrategy:
     """Align using feature detection + RANSAC-based transform estimation."""
 
+    def __init__(self, n_keypoints: int = 500):
+        self.n_keypoints = n_keypoints
+
     def _to_gray(self, img: np.ndarray) -> np.ndarray:
         if img.ndim == 3:
             try:
@@ -70,14 +74,25 @@ class FeatureMatchAlignStrategy:
         images: List[np.ndarray],
         reference_index: int = 0,
         show_progress: bool = False,
+        verbose: bool = False,
     ) -> List[np.ndarray]:
         if not images:
             raise ValueError("No images to align")
 
+        # Local logger only when verbose
+        logger = None
+        if verbose:
+            try:
+                from utils import LogManager
+
+                logger = LogManager.get_logger()
+            except Exception:
+                logger = None
+
         ref = images[reference_index].astype(float)
         aligned: List[np.ndarray] = []
 
-        detector = ORB(n_keypoints=500)
+        detector = ORB(n_keypoints=self.n_keypoints)
         iterator = enumerate(images)
         if show_progress:
             iterator = tqdm(enumerate(images), total=len(images), desc="FeatAlign")
@@ -108,9 +123,13 @@ class FeatureMatchAlignStrategy:
                 model_robust, inliers = ransac((src, dst), AffineTransform,
                                                min_samples=3, residual_threshold=2,
                                                max_trials=100)
+                if logger and verbose:
+                    logger.info(f"RANSAC inliers: {inliers.sum()} / {len(inliers)}")
                 warped = warp(img_f, inverse_map=model_robust.inverse, output_shape=ref.shape)
                 aligned.append(warped)
-            except Exception:
+            except Exception as e:
+                if logger and verbose:
+                    logger.error(f"Feature align failed for frame {idx}: {e}")
                 # if feature matching fails, append original
                 aligned.append(img_f)
 
@@ -125,7 +144,7 @@ def get_align_strategy(method: Optional[str] = None, **kwargs) -> AlignStrategy:
         # support keypoint count tuning
         kp = kwargs.get("kp", None)
         if kp is not None:
-            return FeatureMatchAlignStrategy()
+            return FeatureMatchAlignStrategy(n_keypoints=kp)
         return FeatureMatchAlignStrategy()
     return PhaseCorrelationAlignStrategy()
 
