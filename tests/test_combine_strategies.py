@@ -12,4 +12,6 @@ def test_sigma_clip_combines():
     strat = SigmaClipStrategy(sigma=3.0, iters=2)
     res = strat.combine(imgs)
     # the mean ignoring outlier should be close to 10
-    assert np.allclose(res, 10, atol=1e-6) or np.allclose(np.nanmean(res), 10, atol=1e-6)
+    assert np.allclose(res, 10, atol=1e-6) or np.allclose(
+        np.nanmean(res), 10, atol=1e-6
+    )
