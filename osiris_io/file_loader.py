@@ -1,5 +1,5 @@
 import os
-from typing import List, Iterable
+from typing import Iterable, List
 
 import imageio.v3 as iio
 import numpy as np
@@ -10,18 +10,24 @@ except Exception:
     fits = None
 
 
+EXTENSIONS = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".fits", ".fit")
+
+
 class FileLoader:
     """Loads images from a directory into numpy arrays."""
 
     @staticmethod
     def load_images_from_dir(
-        directory: str, extensions=(".png", ".jpg", ".jpeg", ".tif", ".tiff", ".fits", ".fit")
+        directory: str,
+        extensions=EXTENSIONS,
     ) -> List[np.ndarray]:
         images = []
         for fname in sorted(os.listdir(directory)):
             if fname.lower().endswith(extensions):
                 path = os.path.join(directory, fname)
-                if (path.lower().endswith('.fits') or path.lower().endswith('.fit')) and fits is not None:
+                if (
+                    path.lower().endswith(".fits") or path.lower().endswith(".fit")
+                ) and fits is not None:
                     with fits.open(path) as hdul:
                         img = hdul[0].data
                 else:
@@ -31,13 +37,16 @@ class FileLoader:
 
     @staticmethod
     def iter_images_from_dir(
-        directory: str, extensions=(".png", ".jpg", ".jpeg", ".tif", ".tiff", ".fits", ".fit")
+        directory: str,
+        extensions=EXTENSIONS,
     ) -> Iterable[np.ndarray]:
         """Yield images from a directory one by one (streaming-friendly)."""
         for fname in sorted(os.listdir(directory)):
             if fname.lower().endswith(extensions):
                 path = os.path.join(directory, fname)
-                if (path.lower().endswith('.fits') or path.lower().endswith('.fit')) and fits is not None:
+                if (
+                    path.lower().endswith(".fits") or path.lower().endswith(".fit")
+                ) and fits is not None:
                     with fits.open(path) as hdul:
                         img = hdul[0].data
                 else:

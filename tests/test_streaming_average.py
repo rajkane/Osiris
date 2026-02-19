@@ -1,6 +1,8 @@
 import os
-import numpy as np
+
 import imageio.v3 as iio
+import numpy as np
+
 from cli import run_pipeline
 
 
@@ -28,4 +30,3 @@ def test_streaming_average_pipeline(tmp_path):
     out = iio.imread(res)
     assert out.shape == (8, 8)
     assert out.mean() == 20
-

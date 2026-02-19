@@ -1,6 +1,8 @@
 import os
-import numpy as np
+
 import imageio.v3 as iio
+import numpy as np
+
 from cli import run_pipeline
 
 
@@ -30,4 +32,3 @@ def test_pipeline_with_sigma_and_feature(tmp_path):
     assert os.path.exists(res)
     out = iio.imread(res)
     assert out.shape == (20, 20)
-

@@ -1,4 +1,3 @@
-import os
 import numpy as np
 
 try:
@@ -6,8 +5,8 @@ try:
 except Exception:
     fits = None
 
-from osiris_io.file_writer import FileWriter
 from osiris_io.file_loader import FileLoader
+from osiris_io.file_writer import FileWriter
 
 
 def test_fits_roundtrip(tmp_path):
@@ -23,4 +22,3 @@ def test_fits_roundtrip(tmp_path):
     loaded = imgs[0]
     assert loaded.shape == img.shape
     assert np.allclose(loaded, img)
-

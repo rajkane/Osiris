@@ -21,11 +21,7 @@ def run_pipeline(
     # Local imports to avoid import-time side-effects and keep top-level light
     from osiris_io.file_loader import FileLoader
     from osiris_io.file_writer import FileWriter
-    from stacking import (
-        align_images,
-        normalize_image,
-        stack_images,
-    )
+    from stacking import align_images, normalize_image, stack_images
     from utils import ErrorManager, LogManager
 
     if logger is None:
@@ -37,7 +33,7 @@ def run_pipeline(
         if kwargs.get("stream", False):
             # streaming mode
             if align:
-                raise ValueError("Cannot align images in streaming mode; disable --stream or remove --align")
+                raise ValueError("Cannot align images in streaming mode")
             images = FileLoader.iter_images_from_dir(input_dir)
         else:
             images = FileLoader.load_images_from_dir(input_dir)
@@ -238,7 +234,7 @@ def main():
             "progress": args.progress,
             "stream": args.stream,
             "use_memmap": args.use_memmap,
-            },
+        },
     )
 
 

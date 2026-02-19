@@ -1,13 +1,13 @@
-from typing import List, Protocol, Optional
+from typing import List, Optional, Protocol
 
 import numpy as np
 from scipy.ndimage import shift as ndi_shift
-from skimage.registration import phase_cross_correlation
-from tqdm import tqdm
-from skimage.feature import ORB, match_descriptors
-from skimage.transform import AffineTransform, warp
 from skimage.color import rgb2gray
+from skimage.feature import ORB, match_descriptors
 from skimage.measure import ransac
+from skimage.registration import phase_cross_correlation
+from skimage.transform import AffineTransform, warp
+from tqdm import tqdm
 
 
 class AlignStrategy(Protocol):
@@ -16,8 +16,7 @@ class AlignStrategy(Protocol):
         images: List[np.ndarray],
         reference_index: int = 0,
         show_progress: bool = False,
-    ) -> List[np.ndarray]:
-        ...
+    ) -> List[np.ndarray]: ...
 
 
 class PhaseCorrelationAlignStrategy:
@@ -103,15 +102,17 @@ class FeatureMatchAlignStrategy:
             try:
                 ref_gray = self._to_gray(ref)
                 img_gray = self._to_gray(img_f)
-                detector.detect_and_extract((ref_gray * 255).astype('uint8'))
+                detector.detect_and_extract((ref_gray * 255).astype("uint8"))
                 keypoints1 = detector.keypoints
                 descriptors1 = detector.descriptors
 
-                detector.detect_and_extract((img_gray * 255).astype('uint8'))
+                detector.detect_and_extract((img_gray * 255).astype("uint8"))
                 keypoints2 = detector.keypoints
                 descriptors2 = detector.descriptors
 
-                matches12 = match_descriptors(descriptors1, descriptors2, cross_check=True)
+                matches12 = match_descriptors(
+                    descriptors1, descriptors2, cross_check=True
+                )
                 if len(matches12) < 4:
                     # fallback to no-op shift
                     aligned.append(img_f)
@@ -120,12 +121,18 @@ class FeatureMatchAlignStrategy:
                 src = keypoints2[matches12[:, 1]]
                 dst = keypoints1[matches12[:, 0]]
 
-                model_robust, inliers = ransac((src, dst), AffineTransform,
-                                               min_samples=3, residual_threshold=2,
-                                               max_trials=100)
+                model_robust, inliers = ransac(
+                    (src, dst),
+                    AffineTransform,
+                    min_samples=3,
+                    residual_threshold=2,
+                    max_trials=100,
+                )
                 if logger and verbose:
                     logger.info(f"RANSAC inliers: {inliers.sum()} / {len(inliers)}")
-                warped = warp(img_f, inverse_map=model_robust.inverse, output_shape=ref.shape)
+                warped = warp(
+                    img_f, inverse_map=model_robust.inverse, output_shape=ref.shape
+                )
                 aligned.append(warped)
             except Exception as e:
                 if logger and verbose:
@@ -164,10 +171,8 @@ def align_images(
     """
     if strategy is None:
         strategy = get_align_strategy(method=method, **kwargs)
-    return (
-        strategy.align(
-            images,
-            reference_index=reference_index,
-            show_progress=show_progress,
-        )
+    return strategy.align(
+        images,
+        reference_index=reference_index,
+        show_progress=show_progress,
     )

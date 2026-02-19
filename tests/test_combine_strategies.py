@@ -1,4 +1,5 @@
 import numpy as np
+
 from stacking.combine import SigmaClipStrategy
 
 
@@ -12,4 +13,3 @@ def test_sigma_clip_combines():
     res = strat.combine(imgs)
     # the mean ignoring outlier should be close to 10
     assert np.allclose(res, 10, atol=1e-6) or np.allclose(np.nanmean(res), 10, atol=1e-6)
-

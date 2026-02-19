@@ -49,6 +49,7 @@ class LogManager:
 
             sink = _sink
         except Exception:
+
             def _sink(msg):
                 print(msg, end="")
 

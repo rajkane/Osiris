@@ -5,8 +5,7 @@ from astropy.stats import mad_std, sigma_clip
 
 
 class CombineStrategy(Protocol):
-    def combine(self, images: List[np.ndarray], **kwargs) -> np.ndarray:
-        ...
+    def combine(self, images: List[np.ndarray], **kwargs) -> np.ndarray: ...
 
 
 class AverageStrategy:
@@ -69,14 +68,23 @@ def get_combine_strategy(method: str, **kwargs) -> CombineStrategy:
         iters = kwargs.get("sigma_iters", 5)
         chunk_size = kwargs.get("chunk_size", None)
         if chunk_size:
-            return ChunkedSigmaClipStrategy(sigma=sigma, iters=iters, chunk_size=chunk_size)
+            return ChunkedSigmaClipStrategy(
+                sigma=sigma, iters=iters, chunk_size=chunk_size
+            )
         else:
             return SigmaClipStrategy(sigma=sigma, iters=iters)
     raise ValueError(f"Unknown stacking method: {method}")
 
 
-def stack_images_stream(image_iter: Iterable[np.ndarray], method: str = "average", **kwargs) -> np.ndarray:
-    """Combine images provided as iterator/stream. Only 'average' supported streaming for now."""
+def stack_images_stream(
+    image_iter: Iterable[np.ndarray],
+    method: str = "average",
+    **kwargs,
+) -> np.ndarray:
+    """Combine images provided as iterator/stream.
+
+    Only 'average' is supported in true streaming mode.
+    """
     method = method.lower()
     if method == "average":
         strat = AverageStrategy()
@@ -87,7 +95,13 @@ def stack_images_stream(image_iter: Iterable[np.ndarray], method: str = "average
         return stack_images(imgs, method=method, **kwargs)
 
 
-def stack_images(images: List[np.ndarray], method: str = "average", stream: bool = False, **kwargs) -> np.ndarray:
+def stack_images(
+    images: List[np.ndarray],
+    method: str = "average",
+    stream: bool = False,
+    use_memmap: bool = False,
+    **kwargs,
+) -> np.ndarray:
     """Combine a list of images into a single stacked image using a strategy.
 
     Supported methods: 'average', 'median', 'sigma'. Additional keyword args
@@ -101,6 +115,42 @@ def stack_images(images: List[np.ndarray], method: str = "average", stream: bool
 
     if not images:
         raise ValueError("No images to stack")
+
+    # Option: use numpy memmap to avoid holding full stack in RAM
+    if use_memmap:
+        import os
+        import tempfile
+
+        n = len(images)
+        shape = images[0].shape
+        dtype = np.float64
+
+        tmp = tempfile.NamedTemporaryFile(prefix="osiris_stack_", delete=False)
+        tmp_path = tmp.name
+        tmp.close()
+        try:
+            mem = np.memmap(tmp_path, mode="w+", dtype=dtype, shape=(n, *shape))
+            for i, img in enumerate(images):
+                mem[i, ...] = img.astype(dtype)
+
+            # strategy implementations can operate on array-like memmap
+            strategy = get_combine_strategy(method, **kwargs)
+            result = strategy.combine(mem)
+
+            # flush and delete memmap
+            del mem
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+            return result
+        except Exception:
+            # cleanup on failure
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+            raise
 
     strategy = get_combine_strategy(method, **kwargs)
     return strategy.combine(images)
