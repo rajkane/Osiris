@@ -1,7 +1,7 @@
-from typing import List, Protocol
+from typing import Iterable, List, Protocol
 
 import numpy as np
-from astropy.stats import sigma_clip, mad_std
+from astropy.stats import mad_std, sigma_clip
 
 
 class CombineStrategy(Protocol):
@@ -13,6 +13,23 @@ class AverageStrategy:
     def combine(self, images: List[np.ndarray]) -> np.ndarray:
         arr = np.stack([img.astype(np.float64) for img in images], axis=0)
         return np.mean(arr, axis=0)
+
+    def combine_iter(self, images: Iterable[np.ndarray]) -> np.ndarray:
+        """Streaming average: compute running mean without stacking all frames."""
+        count = 0
+        mean = None
+        for img in images:
+            a = img.astype(np.float64)
+            if mean is None:
+                mean = np.array(a, dtype=np.float64)
+                count = 1
+            else:
+                count += 1
+                # incremental mean: new_mean = old_mean + (a - old_mean)/count
+                mean += (a - mean) / count
+        if mean is None:
+            raise ValueError("No images to stack")
+        return mean
 
 
 class MedianStrategy:
@@ -54,12 +71,30 @@ def get_combine_strategy(method: str, **kwargs) -> CombineStrategy:
     raise ValueError(f"Unknown stacking method: {method}")
 
 
-def stack_images(images: List[np.ndarray], method: str = "average", **kwargs) -> np.ndarray:
+def stack_images_stream(image_iter: Iterable[np.ndarray], method: str = "average", **kwargs) -> np.ndarray:
+    """Combine images provided as iterator/stream. Only 'average' supported streaming for now."""
+    method = method.lower()
+    if method == "average":
+        strat = AverageStrategy()
+        return strat.combine_iter(image_iter)
+    else:
+        # fallback: collect into list and call stack_images
+        imgs = list(image_iter)
+        return stack_images(imgs, method=method, **kwargs)
+
+
+def stack_images(images: List[np.ndarray], method: str = "average", stream: bool = False, **kwargs) -> np.ndarray:
     """Combine a list of images into a single stacked image using a strategy.
 
     Supported methods: 'average', 'median', 'sigma'. Additional keyword args
-    are passed to the strategy factory (e.g., sigma, sigma_iters).
+    are passed to the strategy factory (e.g., sigma, sigma_iters). If stream=True,
+    images is expected to be an iterable and streaming combine will be used when
+    available.
     """
+    if stream:
+        # images is an iterable/generator
+        return stack_images_stream(images, method=method, **kwargs)
+
     if not images:
         raise ValueError("No images to stack")
 

@@ -34,7 +34,13 @@ def run_pipeline(
     try:
         if verbose:
             logger.info(f"Loading images from: {input_dir}")
-        images = FileLoader.load_images_from_dir(input_dir)
+        if kwargs.get("stream", False):
+            # streaming mode
+            if align:
+                raise ValueError("Cannot align images in streaming mode; disable --stream or remove --align")
+            images = FileLoader.iter_images_from_dir(input_dir)
+        else:
+            images = FileLoader.load_images_from_dir(input_dir)
 
         if not images:
             raise ValueError("No images found in input directory")
@@ -55,7 +61,9 @@ def run_pipeline(
         # combine / stack
         if verbose:
             logger.info(f"Stacking images using method: {method}")
-        stacked = stack_images(images, method=method, **kwargs)
+        # pop stream flag so it is not passed twice
+        stream_flag = kwargs.pop("stream", False)
+        stacked = stack_images(images, method=method, stream=stream_flag, **kwargs)
 
         # postprocess (prepare float image)
         if verbose:
@@ -175,6 +183,11 @@ def main():
         action="store_true",
         help="Show progress bars during long operations",
     )
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Stream images instead of loading all into memory (average only)",
+    )
 
     args = parser.parse_args()
 
@@ -193,6 +206,8 @@ def main():
             "sigma_iters": args.sigma_iters,
             "align_method": args.align_method,
             "align_kp": args.align_kp,
+            "progress": args.progress,
+            "stream": args.stream,
         },
     )
 
