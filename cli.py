@@ -122,9 +122,9 @@ def main():
     parser.add_argument(
         "--method",
         "-m",
-        choices=["average", "median"],
+        choices=["average", "median", "sigma"],
         default="average",
-        help="Stacking method to use (default: average or median)",
+        help="Stacking method to use (default: average, median or sigma)",
     )
     parser.add_argument(
         "--sigma",
@@ -169,7 +169,7 @@ def main():
         "--verbose",
         "-v",
         action="store_true",
-        default=False,
+        default=True,
         help="Enable verbose output (default: False)",
     )
 
