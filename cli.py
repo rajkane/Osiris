@@ -142,6 +142,12 @@ def main():
         default=5,
         help="Max iterations for sigma-clipping combine strategy",
     )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=0,
+        help="Chunk size for chunked sigma-clip (0 = disabled)",
+    )
 
     parser.add_argument(
         "--align",
@@ -188,8 +194,30 @@ def main():
         action="store_true",
         help="Stream images instead of loading all into memory (average only)",
     )
+    parser.add_argument(
+        "--use-memmap",
+        action="store_true",
+        help="Use numpy memmap for large arrays to reduce peak RAM usage",
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default=None,
+        help="Set log level (overrides verbose)",
+    )
 
     args = parser.parse_args()
+
+    # If align-method is provided but align flag not set, enable align
+    if args.align_method and not args.align:
+        args.align = True
+
+    # Configure logging level if requested
+    if args.log_level:
+        from utils import LogManager
+
+        LogManager.set_level(args.log_level)
 
     # Run the pipeline with parsed arguments
     run_pipeline(
@@ -204,11 +232,13 @@ def main():
         **{
             "sigma": args.sigma,
             "sigma_iters": args.sigma_iters,
+            "chunk_size": args.chunk_size if args.chunk_size > 0 else None,
             "align_method": args.align_method,
             "align_kp": args.align_kp,
             "progress": args.progress,
             "stream": args.stream,
-        },
+            "use_memmap": args.use_memmap,
+            },
     )
 
 
