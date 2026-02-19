@@ -20,8 +20,12 @@ def run_pipeline(
     # Local imports to avoid import-time side-effects and keep top-level light
     from osiris_io.file_loader import FileLoader
     from osiris_io.file_writer import FileWriter
-    from stacking import align_images, normalize_image, stack_images
-    from utils import ErrorManager, LogManager, MemoryManager
+    from stacking import (
+        align_images,
+        normalize_image,
+        stack_images,
+    )
+    from utils import ErrorManager, LogManager
 
     if logger is None:
         logger = LogManager.get_logger()
@@ -34,16 +38,11 @@ def run_pipeline(
         if not images:
             raise ValueError("No images found in input directory")
 
-        # memory safeguard
-        if mem_limit_mb is not None:
-            if not MemoryManager.check_memory_limit(mem_limit_mb):
-                raise MemoryError(f"Memory usage exceeds limit: {mem_limit_mb} MB")
-
         # optional alignment
         if align:
             if verbose:
                 logger.info("Aligning images...")
-            images = align_images(images)
+            images = align_images(images, show_progress=verbose)
 
         # combine / stack
         if verbose:
@@ -91,7 +90,7 @@ def run_pipeline(
         return output_path
 
     except Exception as e:
-        ErrorManager.handle_error(e, logger=logger)
+        ErrorManager().handle_error(e, logger=logger)
         raise
 
 
@@ -139,6 +138,12 @@ def main():
         help="Memory limit in MB (optional safeguard)",
     )
 
+    parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="Show progress bars during long operations",
+    )
+
     args = parser.parse_args()
 
     # Run the pipeline with parsed arguments
@@ -149,6 +154,7 @@ def main():
         align=args.align,
         verbose=args.verbose,
         mem_limit_mb=args.mem_limit,
+        logger=None,
     )
 
 
