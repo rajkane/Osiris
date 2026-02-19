@@ -11,6 +11,7 @@ def run_pipeline(
     verbose: bool = False,
     mem_limit_mb: Optional[float] = None,
     logger=None,
+    **kwargs,
 ):
     """Run the full stacking pipeline: load -> preprocess -> align -> combine
     -> postprocess -> save.
@@ -42,12 +43,19 @@ def run_pipeline(
         if align:
             if verbose:
                 logger.info("Aligning images...")
-            images = align_images(images, show_progress=verbose)
+            align_method = kwargs.get("align_method", None)
+            align_kp = kwargs.get("align_kp", None)
+            images = align_images(
+                images,
+                show_progress=kwargs.get("progress", False) or verbose,
+                method=align_method,
+                kp=align_kp,
+            )
 
         # combine / stack
         if verbose:
             logger.info(f"Stacking images using method: {method}")
-        stacked = stack_images(images, method=method)
+        stacked = stack_images(images, method=method, **kwargs)
 
         # postprocess (prepare float image)
         if verbose:
@@ -114,6 +122,18 @@ def main():
         default="average",
         help="Stacking method to use (default: average or median)",
     )
+    parser.add_argument(
+        "--sigma",
+        type=float,
+        default=3.0,
+        help="Sigma value for sigma-clipping combine strategy",
+    )
+    parser.add_argument(
+        "--sigma-iters",
+        type=int,
+        default=5,
+        help="Max iterations for sigma-clipping combine strategy",
+    )
 
     parser.add_argument(
         "--align",
@@ -121,6 +141,18 @@ def main():
         action="store_true",
         default=False,
         help="Align images before stacking (default: False)",
+    )
+    parser.add_argument(
+        "--align-method",
+        type=str,
+        default=None,
+        help="Alignment strategy to use, e.g. 'feature' or 'phase'",
+    )
+    parser.add_argument(
+        "--align-kp",
+        type=int,
+        default=500,
+        help="Number of keypoints for feature-based alignment (ORB)",
     )
 
     parser.add_argument(
@@ -155,6 +187,13 @@ def main():
         verbose=args.verbose,
         mem_limit_mb=args.mem_limit,
         logger=None,
+        # forward strategy kwargs
+        **{
+            "sigma": args.sigma,
+            "sigma_iters": args.sigma_iters,
+            "align_method": args.align_method,
+            "align_kp": args.align_kp,
+        },
     )
 
 
