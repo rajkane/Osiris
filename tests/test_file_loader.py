@@ -1,9 +1,11 @@
-import pytest
-import numpy as np
 import os
-import imageio.v3 as iio
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import imageio.v3 as iio
+import numpy as np
+import pytest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from osiris_io.file_loader import FileLoader
 
 

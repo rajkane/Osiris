@@ -1,7 +1,8 @@
 import os
-import numpy as np
-import imageio.v3 as iio
 from typing import List
+
+import imageio.v3 as iio
+import numpy as np
 
 
 class FileLoader:
