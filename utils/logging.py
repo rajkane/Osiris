@@ -1,7 +1,9 @@
 from loguru import logger
 
+
 class LogManager:
     """Manages application-wide logging configuration and loggers using loguru."""
+
     _configured = False
 
     @classmethod
@@ -12,7 +14,7 @@ class LogManager:
             logger.add(
                 sink=lambda msg: print(msg, end=""),
                 format="[{time:YYYY-MM-DD HH:mm:ss}] {level}: {message}",
-                level="INFO"
+                level="INFO",
             )
             cls._configured = True
         return logger
@@ -24,6 +26,6 @@ class LogManager:
         logger.add(
             sink=lambda msg: print(msg, end=""),
             format="[{time:YYYY-MM-DD HH:mm:ss}] {level}: {message}",
-            level=level
+            level=level,
         )
         cls._configured = True

@@ -1,5 +1,6 @@
 class ErrorManager:
     """Handles application-wide error management and reporting."""
+
     @staticmethod
     def handle_error(error: Exception, logger=None):
         if logger:
@@ -11,4 +12,3 @@ class ErrorManager:
     def raise_if(condition: bool, error: Exception):
         if condition:
             raise error
-

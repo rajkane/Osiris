@@ -1,5 +1,6 @@
 import argparse
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="CLI application for stacking astrophotography images."
@@ -14,18 +15,27 @@ def main():
     )
 
     parser.add_argument(
-        "--method", "-m", choices=["average", "median"], default="average",
-        help="Stacking method to use (default: average or median)"
+        "--method",
+        "-m",
+        choices=["average", "median"],
+        default="average",
+        help="Stacking method to use (default: average or median)",
     )
 
     parser.add_argument(
-        "--align", "-a", action="store_true", default=False,
-        help="Align images before stacking (default: False)"
+        "--align",
+        "-a",
+        action="store_true",
+        default=False,
+        help="Align images before stacking (default: False)",
     )
 
     parser.add_argument(
-        "--verbose", "-v", action="store_true", default=False,
-        help="Enable verbose output (default: False)"
+        "--verbose",
+        "-v",
+        action="store_true",
+        default=False,
+        help="Enable verbose output (default: False)",
     )
 
     args = parser.parse_args()
