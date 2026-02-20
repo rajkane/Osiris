@@ -30,13 +30,92 @@ def run_pipeline(
     try:
         if verbose:
             logger.info(f"Loading images from: {input_dir}")
+        output_is_fits = False
+        if (
+            output_path.lower().endswith(".fits")
+            or output_path.lower().endswith(".fit")
+        ):
+            output_is_fits = True
+
         if kwargs.get("stream", False):
             # streaming mode
             if align:
                 raise ValueError("Cannot align images in streaming mode")
-            images = FileLoader.iter_images_from_dir(input_dir)
+            # create a generator that yields calibrated frames
+            raw_iter = FileLoader.iter_images_from_dir(
+                input_dir, return_headers=output_is_fits
+            )
+            bias_path = kwargs.get("bias")
+            dark_path = kwargs.get("dark")
+            flat_path = kwargs.get("flat")
+
+            # pre-load calibration frames if provided
+            bias = None
+            dark = None
+            flat = None
+            if bias_path:
+                bias = FileLoader.load_image(bias_path)
+            if dark_path:
+                dark = FileLoader.load_image(dark_path)
+            if flat_path:
+                flat = FileLoader.load_image(flat_path)
+
+            from stacking.preprocess import apply_calibration
+
+            header_holder = {"hdr": None}
+
+            def calibrated_iter():
+                for item in raw_iter:
+                    # item may be (img, hdr) if return_headers True
+                    if output_is_fits and isinstance(item, tuple):
+                        img, hdr = item
+                        # capture first header encountered
+                        if header_holder["hdr"] is None and hdr is not None:
+                            header_holder["hdr"] = hdr
+                    else:
+                        img = item
+                        hdr = None
+                    yield apply_calibration(img, bias=bias, dark=dark, flat=flat)
+
+
+            images = calibrated_iter()
         else:
             images = FileLoader.load_images_from_dir(input_dir)
+            # if calibration frames provided, apply calibration to all loaded images
+            bias_path = kwargs.get("bias")
+            dark_path = kwargs.get("dark")
+            flat_path = kwargs.get("flat")
+            if bias_path or dark_path or flat_path:
+                bias = None
+                dark = None
+                flat = None
+                if bias_path:
+                    bias = FileLoader.load_image(bias_path)
+                if dark_path:
+                    dark = FileLoader.load_image(dark_path)
+                if flat_path:
+                    flat = FileLoader.load_image(flat_path)
+                from stacking.preprocess import apply_calibration
+
+                calibrated = []
+                for img in images:
+                    calibrated.append(
+                        apply_calibration(img, bias=bias, dark=dark, flat=flat)
+                    )
+                images = calibrated
+
+            # try to capture header from the first input file if available
+            first_header = None
+            if output_is_fits:
+                # attempt to load header from first file in directory
+                try:
+                    # use iterator with headers and grab first
+                    it = FileLoader.iter_images_from_dir(input_dir, return_headers=True)
+                    first_item = next(it, None)
+                    if first_item is not None and isinstance(first_item, tuple):
+                        _, first_header = first_item
+                except Exception:
+                    first_header = None
 
         if not images:
             raise ValueError("No images found in input directory")
@@ -94,7 +173,23 @@ def run_pipeline(
             v = int(round(max(0, min(255, val))))
             final = np.full_like(stacked, fill_value=v, dtype=np.uint8)
 
-        FileWriter.save_image(output_path, final)
+        # if streaming, header may have been captured in header_holder
+        if output_is_fits:
+            try:
+                header_candidate = first_header
+            except UnboundLocalError:
+                header_candidate = None
+            # header_holder exists only in streaming path
+            try:
+                hdr_from_stream = header_holder.get("hdr")
+            except Exception:
+                hdr_from_stream = None
+            if hdr_from_stream is not None:
+                header_candidate = hdr_from_stream
+        else:
+            header_candidate = None
+
+        FileWriter.save_image(output_path, final, header=header_candidate)
 
         if verbose:
             logger.info(f"Saved stacked image to: {output_path}")
@@ -202,6 +297,24 @@ def main():
         default=None,
         help="Set log level (overrides verbose)",
     )
+    parser.add_argument(
+        "--bias",
+        type=str,
+        default=None,
+        help="Path to bias frame (FITS/PNG) to subtract from each image",
+    )
+    parser.add_argument(
+        "--dark",
+        type=str,
+        default=None,
+        help="Path to dark frame (FITS/PNG) to subtract from each image",
+    )
+    parser.add_argument(
+        "--flat",
+        type=str,
+        default=None,
+        help="Path to flat frame (FITS/PNG) to divide each image",
+    )
 
     args = parser.parse_args()
 
@@ -234,6 +347,9 @@ def main():
             "progress": args.progress,
             "stream": args.stream,
             "use_memmap": args.use_memmap,
+            "bias": args.bias,
+            "dark": args.dark,
+            "flat": args.flat,
         },
     )
 
