@@ -25,7 +25,7 @@ def test_preprocess_applied(tmp_path):
     iio.imwrite(str(dark_path), dark)
     iio.imwrite(str(flat_path), flat)
 
-    output_path = str(tmp_path / "out.png")
+    output_path = str(tmp_path / "out_default.png")
 
     res = run_pipeline(
         str(input_dir),

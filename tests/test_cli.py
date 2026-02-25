@@ -15,7 +15,7 @@ def test_run_pipeline_end_to_end(tmp_path):
         path = input_dir / f"img_{i}.png"
         iio.imwrite(str(path), img)
 
-    output_path = str(tmp_path / "out.png")
+    output_path = str(tmp_path / "out_default.png")
 
     res = run_pipeline(
         str(input_dir),

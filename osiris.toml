@@ -1,0 +1,34 @@
+[default]
+input = "./data/frames/default"
+output = "./data/out_default/default_stack.jpeg"
+method = "sigma"
+sigma = 2.5
+sigma_iters = 5
+chunk_size = 3
+align = true
+align_method = "phase"
+use_memmap = true
+# bias = "./calib/bias.jpeg"
+# dark = "./calib/dark.jpeg"
+# flat = "./calib/flat.jpeg"
+
+[deep_sky]
+input = "./data/frames/deep_frames"
+output = "./data/out_deep/deep_stack.jpeg"
+method = "sigma"
+sigma = 2.5
+sigma_iters = 5
+chunk_size = 3
+align = true
+align_method = "phase"
+use_memmap = true
+# bias = "./calib/bias.jpeg"
+# dark = "./calib/dark.jpeg"
+# flat = "./calib/flat.jpeg"
+
+[quick]
+input = "./data/frames/quick_frames"
+output = "./data/out_quick/quick.jpeg"
+method = "average"
+align = true
+use_memmap = true

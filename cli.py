@@ -1,356 +1,88 @@
 import argparse
 import os
+import gc
+import numpy as np
 from typing import Optional
 
 
-def run_pipeline(
-    input_dir: str,
-    output_path: str,
-    method: str = "average",
-    align: bool = False,
-    verbose: bool = False,
-    mem_limit_mb: Optional[float] = None,
-    logger=None,
-    **kwargs,
-):
-    """Run the full stacking pipeline: load -> preprocess -> align -> combine
-    -> postprocess -> save.
-
-    Comments in English inside code as requested.
-    """
-    # Local imports to avoid import-time side-effects and keep top-level light
+def run_pipeline(input_dir, output_path, method="average", align=False, verbose=False, **kwargs):
     from osiris_io.file_loader import FileLoader
     from osiris_io.file_writer import FileWriter
     from stacking import align_images, normalize_image, stack_images
-    from utils import ErrorManager, LogManager
+    from utils import LogManager
 
-    if logger is None:
-        logger = LogManager.get_logger()
+    logger = LogManager.get_logger()
 
-    try:
-        if verbose:
-            logger.info(f"Loading images from: {input_dir}")
-        output_is_fits = False
-        if (
-            output_path.lower().endswith(".fits")
-            or output_path.lower().endswith(".fit")
-        ):
-            output_is_fits = True
+    # 1. Load
+    images = FileLoader.load_images_from_dir(input_dir)
 
-        if kwargs.get("stream", False):
-            # streaming mode
-            if align:
-                raise ValueError("Cannot align images in streaming mode")
-            # create a generator that yields calibrated frames
-            raw_iter = FileLoader.iter_images_from_dir(
-                input_dir, return_headers=output_is_fits
-            )
-            bias_path = kwargs.get("bias")
-            dark_path = kwargs.get("dark")
-            flat_path = kwargs.get("flat")
+    # 2. Align (Uses NaN for borders)
+    if align:
+        if verbose: logger.info("Aligning frames...")
+        aligned = align_images(images, method=kwargs.get("align_method"), show_progress=True)
+        images = aligned  # Overwrite to free old references
+        gc.collect()
 
-            # pre-load calibration frames if provided
-            bias = None
-            dark = None
-            flat = None
-            if bias_path:
-                bias = FileLoader.load_image(bias_path)
-            if dark_path:
-                dark = FileLoader.load_image(dark_path)
-            if flat_path:
-                flat = FileLoader.load_image(flat_path)
+    # 3. Stack (Memory Safe)
+    if verbose: logger.info(f"Stacking images (Method: {method})...")
+    stacked = stack_images(images, method=method, **kwargs)
 
-            from stacking.preprocess import apply_calibration
+    # Clear RAM
+    del images
+    gc.collect()
 
-            header_holder = {"hdr": None}
+    # 4. Postprocess (Fixed assignment!)
+    if verbose: logger.info("Performing Color Neutralization and Stretch...")
+    final_image = normalize_image(stacked, out_dtype=np.uint8)
 
-            def calibrated_iter():
-                for item in raw_iter:
-                    # item may be (img, hdr) if return_headers True
-                    if output_is_fits and isinstance(item, tuple):
-                        img, hdr = item
-                        # capture first header encountered
-                        if header_holder["hdr"] is None and hdr is not None:
-                            header_holder["hdr"] = hdr
-                    else:
-                        img = item
-                        hdr = None
-                    yield apply_calibration(img, bias=bias, dark=dark, flat=flat)
-
-
-            images = calibrated_iter()
-        else:
-            images = FileLoader.load_images_from_dir(input_dir)
-            # if calibration frames provided, apply calibration to all loaded images
-            bias_path = kwargs.get("bias")
-            dark_path = kwargs.get("dark")
-            flat_path = kwargs.get("flat")
-            if bias_path or dark_path or flat_path:
-                bias = None
-                dark = None
-                flat = None
-                if bias_path:
-                    bias = FileLoader.load_image(bias_path)
-                if dark_path:
-                    dark = FileLoader.load_image(dark_path)
-                if flat_path:
-                    flat = FileLoader.load_image(flat_path)
-                from stacking.preprocess import apply_calibration
-
-                calibrated = []
-                for img in images:
-                    calibrated.append(
-                        apply_calibration(img, bias=bias, dark=dark, flat=flat)
-                    )
-                images = calibrated
-
-            # try to capture header from the first input file if available
-            first_header = None
-            if output_is_fits:
-                # attempt to load header from first file in directory
-                try:
-                    # use iterator with headers and grab first
-                    it = FileLoader.iter_images_from_dir(input_dir, return_headers=True)
-                    first_item = next(it, None)
-                    if first_item is not None and isinstance(first_item, tuple):
-                        _, first_header = first_item
-                except Exception:
-                    first_header = None
-
-        if not images:
-            raise ValueError("No images found in input directory")
-
-        # optional alignment
-        if align:
-            if verbose:
-                logger.info("Aligning images...")
-            align_method = kwargs.get("align_method", None)
-            align_kp = kwargs.get("align_kp", None)
-            images = align_images(
-                images,
-                show_progress=kwargs.get("progress", False) or verbose,
-                method=align_method,
-                kp=align_kp,
-            )
-
-        # combine / stack
-        if verbose:
-            logger.info(f"Stacking images using method: {method}")
-        # pop stream flag so it is not passed twice
-        stream_flag = kwargs.pop("stream", False)
-        stacked = stack_images(images, method=method, stream=stream_flag, **kwargs)
-
-        # postprocess (prepare float image)
-        if verbose:
-            logger.info("Postprocessing result image...")
-        # We don't assign the result to an unused variable
-        _ = normalize_image(stacked, out_dtype=None)
-
-        # ensure output directory exists
-        out_dir = os.path.dirname(output_path)
-        if out_dir and not os.path.exists(out_dir):
-            os.makedirs(out_dir, exist_ok=True)
-
-        # save (cast to uint8 for file storage)
-        # Prefer preserving absolute intensity when possible (no global
-        # normalization
-        import numpy as np
-
-        min_val = np.nanmin(stacked)
-        max_val = np.nanmax(stacked)
-
-        if np.isfinite(min_val) and np.isfinite(max_val) and max_val - min_val > 0:
-            # If values already in 0-255 range, just clip and cast
-            if 0 <= min_val and max_val <= 255:
-                final = np.clip(np.rint(stacked), 0, 255).astype(np.uint8)
-            else:
-                # otherwise normalize to 0..255
-                scaled = (stacked - min_val) / (max_val - min_val)
-                final = np.clip(np.rint(scaled * 255.0), 0, 255).astype(np.uint8)
-        else:
-            # degenerate case (constant image). Cast constant value to uint8
-            val = 0 if not np.isfinite(min_val) else float(min_val)
-            v = int(round(max(0, min(255, val))))
-            final = np.full_like(stacked, fill_value=v, dtype=np.uint8)
-
-        # if streaming, header may have been captured in header_holder
-        if output_is_fits:
-            try:
-                header_candidate = first_header
-            except UnboundLocalError:
-                header_candidate = None
-            # header_holder exists only in streaming path
-            try:
-                hdr_from_stream = header_holder.get("hdr")
-            except Exception:
-                hdr_from_stream = None
-            if hdr_from_stream is not None:
-                header_candidate = hdr_from_stream
-        else:
-            header_candidate = None
-
-        FileWriter.save_image(output_path, final, header=header_candidate)
-
-        if verbose:
-            logger.info(f"Saved stacked image to: {output_path}")
-
-        return output_path
-
-    except Exception as e:
-        ErrorManager().handle_error(e, logger=logger)
-        raise
+    # 5. Save
+    FileWriter.save_image(output_path, final_image)
+    if verbose: logger.info(f"Successfully saved to: {output_path}")
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="CLI application for stacking astrophotography images."
-    )
-
-    parser.add_argument(
-        "--input", "-i", required=True, help="Path to input image directory"
-    )
-
-    parser.add_argument(
-        "--output", "-o", required=True, help="Path to output stacked image"
-    )
-
-    parser.add_argument(
-        "--method",
-        "-m",
-        choices=["average", "median", "sigma"],
-        default="average",
-        help="Stacking method to use (default: average, median or sigma)",
-    )
-    parser.add_argument(
-        "--sigma",
-        type=float,
-        default=3.0,
-        help="Sigma value for sigma-clipping combine strategy",
-    )
-    parser.add_argument(
-        "--sigma-iters",
-        type=int,
-        default=5,
-        help="Max iterations for sigma-clipping combine strategy",
-    )
-    parser.add_argument(
-        "--chunk-size",
-        type=int,
-        default=0,
-        help="Chunk size for chunked sigma-clip (0 = disabled)",
-    )
-
-    parser.add_argument(
-        "--align",
-        "-a",
-        action="store_true",
-        default=False,
-        help="Align images before stacking (default: False)",
-    )
-    parser.add_argument(
-        "--align-method",
-        type=str,
-        default=None,
-        help="Alignment strategy to use, e.g. 'feature' or 'phase'",
-    )
-    parser.add_argument(
-        "--align-kp",
-        type=int,
-        default=500,
-        help="Number of keypoints for feature-based alignment (ORB)",
-    )
-
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        default=True,
-        help="Enable verbose output (default: False)",
-    )
-
-    parser.add_argument(
-        "--mem-limit",
-        type=float,
-        default=None,
-        help="Memory limit in MB (optional safeguard)",
-    )
-
-    parser.add_argument(
-        "--progress",
-        action="store_true",
-        help="Show progress bars during long operations",
-    )
-    parser.add_argument(
-        "--stream",
-        action="store_true",
-        help="Stream images instead of loading all into memory (average only)",
-    )
-    parser.add_argument(
-        "--use-memmap",
-        action="store_true",
-        help="Use numpy memmap for large arrays to reduce peak RAM usage",
-    )
-    parser.add_argument(
-        "--log-level",
-        type=str,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        default=None,
-        help="Set log level (overrides verbose)",
-    )
-    parser.add_argument(
-        "--bias",
-        type=str,
-        default=None,
-        help="Path to bias frame (FITS/PNG) to subtract from each image",
-    )
-    parser.add_argument(
-        "--dark",
-        type=str,
-        default=None,
-        help="Path to dark frame (FITS/PNG) to subtract from each image",
-    )
-    parser.add_argument(
-        "--flat",
-        type=str,
-        default=None,
-        help="Path to flat frame (FITS/PNG) to divide each image",
-    )
+    parser = argparse.ArgumentParser(description="Osiris Stacker CLI")
+    parser.add_argument("--input", "-i")
+    parser.add_argument("--output", "-o")
+    parser.add_argument("--method", "-m")
+    parser.add_argument("--profile", "-p")
+    parser.add_argument("--align", "-a", action="store_true")
+    parser.add_argument("--verbose", "-v", action="store_true", default=True)
+    parser.add_argument("--use-memmap", action="store_true")
 
     args = parser.parse_args()
 
-    # If align-method is provided but align flag not set, enable align
-    if args.align_method and not args.align:
-        args.align = True
+    # Profile integration
+    import tomllib
+    profiles = {}
+    if os.path.exists("osiris.toml"):
+        with open("osiris.toml", "rb") as f:
+            profiles = tomllib.load(f)
 
-    # Configure logging level if requested
-    if args.log_level:
-        from utils import LogManager
+    profile_data = profiles.get(args.profile, {}) if args.profile else {}
 
-        LogManager.set_level(args.log_level)
+    # Merge CLI and Profile (CLI has priority)
+    input_path = args.input or profile_data.get("input")
+    output_path = args.output or profile_data.get("output")
 
-    # Run the pipeline with parsed arguments
+    if not input_path or not output_path:
+        parser.error("Input and Output paths required via CLI or Profile.")
+
+    # Prepare safe arguments
+    run_params = {
+        "method": args.method or profile_data.get("method", "average"),
+        "align": args.align or profile_data.get("align", False),
+        "use_memmap": args.use_memmap or profile_data.get("use_memmap", False),
+        "chunk_size": profile_data.get("chunk_size", 3),
+        "sigma": profile_data.get("sigma", 3.0),
+        "align_method": profile_data.get("align_method", "phase")
+    }
+
     run_pipeline(
-        input_dir=args.input,
-        output_path=args.output,
-        method=args.method,
-        align=args.align,
+        input_dir=input_path,
+        output_path=output_path,
         verbose=args.verbose,
-        mem_limit_mb=args.mem_limit,
-        logger=None,
-        # forward strategy kwargs
-        **{
-            "sigma": args.sigma,
-            "sigma_iters": args.sigma_iters,
-            "chunk_size": args.chunk_size if args.chunk_size > 0 else None,
-            "align_method": args.align_method,
-            "align_kp": args.align_kp,
-            "progress": args.progress,
-            "stream": args.stream,
-            "use_memmap": args.use_memmap,
-            "bias": args.bias,
-            "dark": args.dark,
-            "flat": args.flat,
-        },
+        **run_params
     )
 
 

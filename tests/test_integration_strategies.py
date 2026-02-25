@@ -14,7 +14,7 @@ def test_pipeline_with_sigma_and_feature(tmp_path):
         path = input_dir / f"img_{i}.png"
         iio.imwrite(str(path), img)
 
-    output_path = str(tmp_path / "out.png")
+    output_path = str(tmp_path / "out_default.png")
 
     res = run_pipeline(
         str(input_dir),

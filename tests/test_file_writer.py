@@ -12,7 +12,7 @@ from osiris_io.file_writer import FileWriter
 @pytest.fixture
 def tmp_image(tmp_path):
     img = np.ones((5, 5), dtype=np.uint8) * 127
-    path = tmp_path / "out.png"
+    path = tmp_path / "out_default.png"
     return img, str(path)
 
 

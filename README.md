@@ -24,32 +24,32 @@ pip install -r requirements.txt
 2. Basic usage (stack PNG/JPEG/TIFF in a folder):
 
 ```bash
-python main.py -i /path/to/frames -o out.png --method average
+python main.py -i /path/to/frames -o out_default.png --method average
 ```
 
 3. Align frames using feature-based alignment and verbose logging:
 
 ```bash
-python main.py -i /path/to/frames -o out.png --align --align-method feature --verbose
+python main.py -i /path/to/frames -o out_default.png --align --align-method feature --verbose
 ```
 
 4. Use sigma-clipping with chunked processing (reduces peak RAM):
 
 ```bash
-python main.py -i /path/to/frames -o out.png --method sigma --sigma 3.0 --sigma-iters 5 --chunk-size 50
+python main.py -i /path/to/frames -o out_default.png --method sigma --sigma 3.0 --sigma-iters 5 --chunk-size 50
 ```
 
 5. Streaming average (low-memory):
 
 ```bash
-python main.py -i /path/to/frames -o out.png --method average --stream
+python main.py -i /path/to/frames -o out_default.png --method average --stream
 ```
 
 Notes and gotchas
 - Preprocess / Calibration: use `--bias`, `--dark`, and `--flat` to supply calibration frames (single image file each). The pipeline will apply calibration before alignment and stacking. Example:
 
 ```bash
-python main.py -i /path/to/frames -o out.fits --bias /path/to/bias.fits --dark /path/to/dark.fits --flat /path/to/flat.fits --method average --align
+python main.py -i /path/to/frames -o out_default.fits --bias /path/to/bias.fits --dark /path/to/dark.fits --flat /path/to/flat.fits --method average --align
 ```
 
 - FITS: If `astropy` is installed, Osiris will read and write FITS files. The loader can optionally return FITS headers and the writer will preserve a provided primary header when writing FITS output. When saving to FITS, Osiris will capture a header from the first input frame (if available) and attach it to the output primary HDU.
@@ -91,6 +91,86 @@ python main.py -i /data/frames -o result.png --method average --stream --use-mem
 ```bash
 python main.py -i /precalibrated -o median.png --method median
 ```
+
+Profiles & shortcuts (quick commands)
+-------------------------------------
+
+If you run the same groups of options repeatedly, use profiles stored in a TOML file so you only type a short command.
+
+Where to put profiles
+- Per-user config: `~/.config/osiris/config.toml` (preferred for a user on your machine)
+- Project-local: `./osiris.toml` (keeps config with the project and works for CI or other users)
+- Examples shipped with this repo: `examples/config.toml` or the root example `osiris.toml`.
+
+List available profiles
+
+```bash
+python main.py --list-profiles
+```
+
+Run a profile by name
+
+```bash
+python main.py --profile deep_sky
+```
+
+Override a single option on top of a profile
+
+```bash
+python main.py --profile deep_sky --method average
+```
+
+Precedence (how values are chosen)
+- CLI flags (highest priority)
+- Environment variables: `OSIRIS_<UPPER_NAME>` (for example `OSIRIS_BIAS`)
+- Profile values in TOML (`~/.config/osiris/config.toml` or `./osiris.toml`)
+- Built-in defaults (lowest priority)
+
+Example profile (the project contains `osiris.toml` and `examples/config.toml`):
+
+```toml
+[deep_sky]
+input = "./data/frames/deep_frames"
+output = "./data/out_deep/deep_stack.jpg"
+method = "sigma"
+sigma = 3.5
+sigma_iters = 5
+chunk_size = 200
+align = true
+align_method = "feature"
+use_memmap = true
+```
+
+Quick aliases and scripts
+
+- Shell alias (bash/zsh):
+
+```bash
+# put into ~/.bashrc or ~/.zshrc
+alias osiris-default='python /path/to/main.py --profile default'
+```
+
+- Small wrapper script (`osiris-run`) you can add to your PATH:
+
+```bash
+#!/usr/bin/env bash
+python /path/to/main.py --profile "$1"
+```
+
+Environment variables
+
+- You can export environment variables as shortcuts. Example:
+
+```bash
+export OSIRIS_BIAS=/home/user/calib/bias.fits
+export OSIRIS_DARK=/home/user/calib/dark.fits
+python main.py --profile quick
+```
+
+Notes and tips
+- Keep calibration file paths (bias/dark/flat) absolute or relative to where you run the command.
+- For reproducibility, commit a project-local `osiris.toml` in your project repository (others can use it directly).
+- Use `--profile` + occasional CLI overrides for the fastest, repeatable workflows.
 
 Options reference
 -----------------
