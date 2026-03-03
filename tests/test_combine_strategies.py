@@ -11,7 +11,23 @@ def test_sigma_clip_combines():
 
     strat = SigmaClipStrategy(sigma=3.0, iters=2)
     res = strat.combine(imgs)
-    # the mean ignoring outlier should be close to 10
-    assert np.allclose(res, 10, atol=1e-6) or np.allclose(
-        np.nanmean(res), 10, atol=1e-6
+
+    # With per-frame median normalization, constant frames normalize to ~1.
+    assert np.allclose(res, 1.0, atol=1e-6) or np.allclose(
+        np.nanmean(res), 1.0, atol=1e-6
+    )
+
+
+def test_sigma_clip_combines_rgb():
+    # RGB: ensure weight broadcasting works with trailing channel dimension
+    base = np.ones((8, 8, 3), dtype=np.float64) * 10
+    imgs = [base.copy() for _ in range(6)]
+    imgs[3] = base * 1000
+
+    strat = SigmaClipStrategy(sigma=3.0, iters=2)
+    res = strat.combine(imgs)
+
+    assert res.shape == base.shape
+    assert np.allclose(res, 1.0, atol=1e-4) or np.allclose(
+        np.nanmean(res), 1.0, atol=1e-4
     )

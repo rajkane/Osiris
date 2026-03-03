@@ -25,22 +25,25 @@ class FileLoader:
         directory: str,
         extensions=EXTENSIONS,
         return_headers: bool = False,
+        use_memmap: bool = False,
     ) -> List:
         """Load all images in `directory`.
 
         If `return_headers` is True, returns a list of (image, header) tuples
         where header is an astropy header for FITS files or None for other
         formats. Otherwise returns a list of numpy arrays.
+
+        `use_memmap` affects FITS loading only (astropy memmap). For common
+        image formats it is a no-op.
         """
         images = []
         for fname in sorted(os.listdir(directory)):
             if fname.lower().endswith(extensions):
                 path = os.path.join(directory, fname)
                 if (
-                    path.lower().endswith(".fits")
-                    or path.lower().endswith(".fit")
+                    path.lower().endswith(".fits") or path.lower().endswith(".fit")
                 ) and fits is not None:
-                    with fits.open(path) as hdul:
+                    with fits.open(path, memmap=use_memmap) as hdul:
                         img = hdul[0].data
                         hdr = hdul[0].header
                 else:
@@ -54,20 +57,22 @@ class FileLoader:
         directory: str,
         extensions=EXTENSIONS,
         return_headers: bool = False,
+        use_memmap: bool = False,
     ) -> Iterable:
         """Yield images (or (image, header)) from a directory one by one.
 
         Useful for streaming processing. `return_headers` same semantics as
         in `load_images_from_dir`.
+
+        `use_memmap` affects FITS loading only.
         """
         for fname in sorted(os.listdir(directory)):
             if fname.lower().endswith(extensions):
                 path = os.path.join(directory, fname)
                 if (
-                    path.lower().endswith(".fits")
-                    or path.lower().endswith(".fit")
+                    path.lower().endswith(".fits") or path.lower().endswith(".fit")
                 ) and fits is not None:
-                    with fits.open(path) as hdul:
+                    with fits.open(path, memmap=use_memmap) as hdul:
                         img = hdul[0].data
                         hdr = hdul[0].header
                 else:
@@ -76,18 +81,19 @@ class FileLoader:
                 yield (img, hdr) if return_headers else img
 
     @staticmethod
-    def load_image(path: str, return_header: bool = False):
+    def load_image(path: str, return_header: bool = False, use_memmap: bool = False):
         """Load a single image from a path.
 
         If `return_header` is True and the file is FITS, returns (image, header),
         otherwise returns image array.
+
+        `use_memmap` affects FITS loading only.
         """
         p = path
         if (
-            p.lower().endswith(".fits")
-            or p.lower().endswith(".fit")
+            p.lower().endswith(".fits") or p.lower().endswith(".fit")
         ) and fits is not None:
-            with fits.open(p) as hdul:
+            with fits.open(p, memmap=use_memmap) as hdul:
                 img = hdul[0].data
                 hdr = hdul[0].header
             return (img, hdr) if return_header else img

@@ -17,8 +17,7 @@ class FileWriter:
     @staticmethod
     def save_image(path: str, image: "np.ndarray", header=None):
         if (
-            path.lower().endswith('.fits')
-            or path.lower().endswith('.fit')
+            path.lower().endswith(".fits") or path.lower().endswith(".fit")
         ) and fits is not None:
             # If a header is given, attach it to the Primary HDU
             if header is not None:

@@ -6,7 +6,7 @@ import numpy as np
 from cli import run_pipeline
 
 
-def test_pipeline_with_sigma_and_feature(tmp_path):
+def test_pipeline_with_sigma_and_align(tmp_path):
     input_dir = tmp_path / "in"
     input_dir.mkdir()
     for i in range(4):
@@ -25,8 +25,8 @@ def test_pipeline_with_sigma_and_feature(tmp_path):
         progress=False,
         sigma=2.5,
         sigma_iters=3,
-        align_method="feature",
-        align_kp=200,
+        chunk_size=2,
+        use_memmap=True,
     )
 
     assert os.path.exists(res)

@@ -1,34 +1,30 @@
 [default]
 input = "./data/frames/default"
 output = "./data/out_default/default_stack.jpeg"
-method = "sigma"
-sigma = 2.5
-sigma_iters = 5
-chunk_size = 3
+sigma = 3.0
+sigma_iters = 2
+chunk_size = 5
 align = true
-align_method = "phase"
 use_memmap = true
-# bias = "./calib/bias.jpeg"
-# dark = "./calib/dark.jpeg"
-# flat = "./calib/flat.jpeg"
+normalize = true
 
 [deep_sky]
 input = "./data/frames/deep_frames"
 output = "./data/out_deep/deep_stack.jpeg"
-method = "sigma"
-sigma = 2.5
-sigma_iters = 5
-chunk_size = 3
+sigma = 3.0
+sigma_iters = 3
+chunk_size = 5
 align = true
-align_method = "phase"
 use_memmap = true
-# bias = "./calib/bias.jpeg"
-# dark = "./calib/dark.jpeg"
-# flat = "./calib/flat.jpeg"
+normalize = true
 
 [quick]
 input = "./data/frames/quick_frames"
 output = "./data/out_quick/quick.jpeg"
-method = "average"
+# Faster/less RAM: fewer sigma iters + smaller chunking.
+sigma = 3.0
+sigma_iters = 1
+chunk_size = 5
 align = true
 use_memmap = true
+normalize = true

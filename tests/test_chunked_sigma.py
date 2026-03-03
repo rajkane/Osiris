@@ -12,7 +12,8 @@ def test_chunked_sigma_simple():
 
     strat = ChunkedSigmaClipStrategy(sigma=3.0, iters=2, chunk_size=3)
     res = strat.combine(imgs)
-    # result should be close to 10 (ignoring outliers)
-    ok1 = np.allclose(res, 10, atol=1e-6)
-    ok2 = np.allclose(np.nanmean(res), 10, atol=1e-6)
+
+    # With per-frame median normalization, constant frames normalize to ~1.
+    ok1 = np.allclose(res, 1.0, atol=1e-6)
+    ok2 = np.allclose(np.nanmean(res), 1.0, atol=1e-6)
     assert ok1 or ok2

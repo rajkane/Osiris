@@ -1,57 +1,117 @@
 import numpy as np
-import gc
-from scipy.ndimage import shift as ndi_shift
-from skimage.color import rgb2gray
-from skimage.feature import ORB, match_descriptors
-from skimage.measure import ransac
-from skimage.registration import phase_cross_correlation
-from skimage.transform import SimilarityTransform, warp
 from tqdm import tqdm
 
-class PhaseCorrelationAlignStrategy:
+
+def _to_gray_float32(img: np.ndarray) -> np.ndarray:
+    """Convert an image to grayscale float32 for registration.
+
+    Keeps behavior consistent for both grayscale and RGB inputs.
+    """
+    img_f = img.astype(np.float32, copy=False)
+    if img_f.ndim == 2:
+        return img_f
+    if img_f.ndim == 3:
+        rgb = img_f[:, :, :3]
+        return (
+            0.2126 * rgb[:, :, 0] + 0.7152 * rgb[:, :, 1] + 0.0722 * rgb[:, :, 2]
+        ).astype(np.float32)
+    # Fallback: flatten extra dims cautiously
+    return np.mean(img_f, axis=-1).astype(np.float32)
+
+
+def _apply_nan_border(aligned_img: np.ndarray) -> np.ndarray:
+    """Convert constant-fill borders (typically 0) to NaN.
+
+    This is a pragmatic way to avoid stacking artifacts at the edges after
+    geometric alignment. We only touch pixels that are exactly 0.0 in all
+    channels, which is consistent with constant-fill warps.
+
+    Note: This assumes images are non-negative (typical for astro frames).
+    """
+
+    out = aligned_img.astype(np.float32, copy=False)
+
+    if out.ndim == 2:
+        border = out == 0.0
+        if np.any(border):
+            out = out.copy()
+            out[border] = np.nan
+        return out
+
+    if out.ndim == 3:
+        border = np.all(out[:, :, :3] == 0.0, axis=-1)
+        if np.any(border):
+            out = out.copy()
+            out[border, :] = np.nan
+        return out
+
+    return out
+
+
+class AstroalignAlignStrategy:
+    """Align using the `astroalign` library.
+
+    Notes:
+    - We estimate the transform on a grayscale representation for robustness.
+    - Then we apply the transform to the original image (including RGB).
+    - If astroalign isn't available or matching fails, we fall back to identity
+      alignment (no movement) instead of using another method.
+    """
+
     def align(self, images, reference_index=0, show_progress=False):
-        ref = images[reference_index].astype(np.float32)
+        try:
+            import astroalign as aa
+        except Exception:
+            # astroalign not available; keep frames unchanged.
+            return [img.astype(np.float32, copy=False) for img in images]
+
+        if not images:
+            return []
+
+        ref = images[reference_index]
+        ref_gray = _to_gray_float32(ref)
+
         aligned = []
         iterator = tqdm(images, desc="Aligning") if show_progress else images
-        for img in iterator:
-            img_f = img.astype(np.float32)
-            shift, _, _ = phase_cross_correlation(ref, img_f, upsample_factor=10)
-            corrected = ndi_shift(img_f, shift=shift, order=1, mode="constant", cval=np.nan)
-            aligned.append(corrected)
-            gc.collect()
-        return aligned
 
-class FeatureMatchAlignStrategy:
-    def __init__(self, n_keypoints=5000):
-        self.n_keypoints = n_keypoints
-
-    def align(self, images, reference_index=0, show_progress=False):
-        ref = images[reference_index].astype(np.float32)
-        ref_gray = rgb2gray(ref) if ref.ndim == 3 else ref
-        aligned = []
-        detector = ORB(n_keypoints=self.n_keypoints)
-        iterator = tqdm(images, desc="Aligning") if show_progress else images
         for img in iterator:
-            img_f = img.astype(np.float32)
             try:
-                img_gray = rgb2gray(img_f) if img_f.ndim == 3 else img_f
-                detector.detect_and_extract((ref_gray * 255).astype("uint8"))
-                kp1, des1 = detector.keypoints, detector.descriptors
-                detector.detect_and_extract((img_gray * 255).astype("uint8"))
-                kp2, des2 = detector.keypoints, detector.descriptors
-                matches = match_descriptors(des1, des2, cross_check=True)
-                src, dst = kp2[matches[:, 1]], kp1[matches[:, 0]]
-                model, _ = ransac((src, dst), SimilarityTransform, min_samples=2, residual_threshold=2, max_trials=500)
-                warped = warp(img_f, inverse_map=model.inverse, output_shape=ref.shape, cval=np.nan)
-                aligned.append(warped.astype(np.float32))
-            except:
-                aligned.append(img_f)
-            gc.collect()
+                img_gray = _to_gray_float32(img)
+
+                # astroalign.find_transform returns (transform, (src, dst))
+                transf, _ = aa.find_transform(img_gray, ref_gray)
+
+                # Apply transform to full image. Keep output shape consistent with reference.
+                aligned_img, _ = aa.apply_transform(transf, img, ref)
+
+                # Mark outside-of-frame / fill regions as NaN so stacking can ignore them.
+                aligned_img = _apply_nan_border(aligned_img)
+
+                aligned.append(aligned_img.astype(np.float32, copy=False))
+            except Exception:
+                # If alignment fails for a frame, keep it unchanged.
+                aligned.append(img.astype(np.float32, copy=False))
+
         return aligned
 
-def align_images(images, method=None, **kwargs):
-    strategy = FeatureMatchAlignStrategy(n_keypoints=kwargs.get("kp", 5000)) if method == "feature" else PhaseCorrelationAlignStrategy()
-    aligned = strategy.align(images, show_progress=kwargs.get("show_progress", False))
-    # replace NaN with zeros to avoid downstream argmax/nan issues
-    aligned = [np.nan_to_num(a, nan=0.0, posinf=0.0, neginf=0.0) for a in aligned]
-    return aligned
+
+def align_images(
+    images,
+    reference_index=0,
+    show_progress=False,
+    **_kwargs,
+):
+    """Align a list of images using astroalign.
+
+    Args:
+        images: List of numpy arrays (H,W) or (H,W,C)
+        reference_index: Index of reference frame
+        show_progress: Whether to show tqdm progress bar
+
+    Returns:
+        List of aligned images, same shapes as inputs.
+    """
+    strategy = AstroalignAlignStrategy()
+    return strategy.align(
+        images, reference_index=reference_index, show_progress=show_progress
+    )
