@@ -1,6 +1,6 @@
 astropy==7.2.0
 astropy-iers-data==0.2026.2.16.0.48.25
-black==26.1.0
+black==26.3.1
 click==8.3.1
 ImageIO==2.37.2
 iniconfig==2.3.0
